@@ -217,7 +217,8 @@ void render_text(Engine_Prototype *Engine, const char *text, float x, float y, f
     }
 }
 
-void keyboard_keymap(Engine_Prototype *Engine, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size){
+void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size){
+    Engine_Prototype *Engine = (Engine_Prototype*) data;
 	char *keymap_string = mmap (NULL, size, PROT_READ, MAP_SHARED, fd, 0);
 	xkb_keymap_unref (Engine->keymap);
 	Engine->keymap = xkb_keymap_new_from_string (Engine->xkb_context, keymap_string, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -230,7 +231,8 @@ void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, st
 void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface){}
 void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group){}
 void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay){}
-void key_listener(Engine_Prototype *Engine, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state){
+void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state){
+    Engine_Prototype *Engine = (Engine_Prototype*) data;
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		xkb_keysym_t keysym = xkb_state_key_get_one_sym (Engine->xkb_state, key+8);
 		uint32_t utf32 = xkb_keysym_to_utf32 (keysym);
@@ -264,7 +266,8 @@ void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, int32_t w
     printf("WINDOW RECONFIGURED: %dx%d\n", width, height);
 }
 
-void xdg_toplevel_close(Engine_Prototype *Engine, struct xdg_toplevel *toplevel){
+void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel){
+    Engine_Prototype *Engine = (Engine_Prototype*) data;
     printf("WINDOW CLOSED\n");
     Engine->running = false;
 }
@@ -283,12 +286,13 @@ void output_mode(void *data, struct wl_output *output,
 }
 
 void global_registry_handler(
-    Engine_Prototype *Engine, 
+    void *data,
     struct wl_registry *registry, 
     uint32_t id,
     const char *interface, 
     uint32_t version
 ){
+    Engine_Prototype *Engine = (Engine_Prototype*) data;
     printf("Got a registry event for %s id %d\n", interface, id);
     if(!strcmp(interface, "wl_compositor")){
         Engine->compositor = wl_registry_bind(registry, id, &wl_compositor_interface, 1);

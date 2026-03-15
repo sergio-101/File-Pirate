@@ -1,5 +1,5 @@
-#ifndef UI_H
-#define UI_H
+#ifndef MAIN_H
+#define MAIN_H
 #pragma once
 
 #include "engine.h"

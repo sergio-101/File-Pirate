@@ -1,5 +1,5 @@
-#ifndef MAIN_H
-#define MAIN_H
+#ifndef ENGINE_H
+#define ENGINE_H
 
 #pragma once
 #define _GNU_SOURCE
@@ -68,12 +68,12 @@ void init_freetype(Engine_Prototype *Engine, const char *font_path, int font_siz
 
 void render_text(Engine_Prototype *Engine, const char *text, float x, float y, float scale, float r, float g, float b) ;
 
-void keyboard_keymap(Engine_Prototype *Engine, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size);
+void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size);
 void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys);
 void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface);
 void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
 void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay);
-void key_listener(Engine_Prototype *Engine, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
+void key_listener(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
 
 
 void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial);
@@ -82,7 +82,7 @@ void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t
 
 void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, int32_t width, int32_t height, struct wl_array *states) ;
 
-void xdg_toplevel_close(Engine_Prototype *Engine, struct xdg_toplevel *toplevel);
+void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel);
 
 void output_geometry(void *data, struct wl_output *output, int32_t x, int32_t y, int32_t physical_width, int32_t physical_height, int32_t subpixel, const char *make, const char *model, int32_t transform) ;
 void output_done(void *data, struct wl_output *output) ;
@@ -92,7 +92,7 @@ void output_mode(void *data, struct wl_output *output,
                         int32_t refresh);
 
 void global_registry_handler(
-    Engine_Prototype *Engine, 
+    void *data,
     struct wl_registry *registry, 
     uint32_t id,
     const char *interface, 
