@@ -34,9 +34,9 @@ typedef struct {
     unsigned int advance;
 } Glyph;
 
-typedef struct Engine_Prototype{
+typedef struct Wl_Engine{
     bool running;
-
+    bool dirty;
     struct wl_display *display;
     struct wl_seat *seat;
     struct wl_compositor *compositor;
@@ -58,23 +58,15 @@ typedef struct Engine_Prototype{
     unsigned int VAO, VBO;
     int ascender;
     unsigned int shader;
-} Engine_Prototype;
+} Wl_Engine;
 
 void make_ortho(float *m, float l, float r, float b, float t);
 
 unsigned int create_shader(const char *vert_path, const char *frag_path);
 
-void init_freetype(Engine_Prototype *Engine, const char *font_path, int font_size);
+void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size);
 
-void render_text(Engine_Prototype *Engine, const char *text, float x, float y, float scale, float r, float g, float b) ;
-
-void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size);
-void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys);
-void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface);
-void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
-void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay);
-void key_listener(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
-
+void render_text(Wl_Engine *Engine, const char *text, float x, float y, float scale, float r, float g, float b) ;
 
 void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial);
 
@@ -101,6 +93,6 @@ void global_registry_handler(
 
 void global_registry_remover(void *data, struct wl_registry *registry, uint32_t id);
 
-int Init_Engine(Engine_Prototype *Engine);
+int Init_Engine(Wl_Engine *Engine);
 
 #endif

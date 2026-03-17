@@ -56,7 +56,7 @@ unsigned int create_shader(const char *vert_path, const char *frag_path) {
     return program;
 }
 
-void init_freetype(Engine_Prototype *Engine, const char *font_path, int font_size) {
+void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size) {
     // (source): https://freetype.org/freetype2/docs/tutorial/step1.html#section-1;
     
     // create a lib instance;
@@ -156,7 +156,7 @@ void init_freetype(Engine_Prototype *Engine, const char *font_path, int font_siz
     //        ←——— 16 bytes ————→ (stride)
 }
 
-void render_text(Engine_Prototype *Engine, const char *text, float x, float y, float scale, float r, float g, float b) {
+void render_text(Wl_Engine *Engine, const char *text, float x, float y, float scale, float r, float g, float b) {
     glUseProgram(Engine->shader);
     glUniform3f(glGetUniformLocation(Engine->shader, "textColor"), r, g, b);
     glActiveTexture(GL_TEXTURE0);
@@ -201,13 +201,13 @@ void render_text(Engine_Prototype *Engine, const char *text, float x, float y, f
             { xpos + w, ypos + h, 1.0f, 1.0f },                                        
         };
 
-        // Activating the bitmap texture of the character
+        // Activating the bitmap texture of the character;
         glBindTexture(GL_TEXTURE_2D, g->textureID);
 
-        // loading the vertices data into VBO
+        // loading the vertices data into VBO;
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
 
-        // Finally, Draw.
+        // Finally, Draw;
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         // Shift the cursor past the character;
@@ -217,57 +217,21 @@ void render_text(Engine_Prototype *Engine, const char *text, float x, float y, f
     }
 }
 
-void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size){
-    Engine_Prototype *Engine = (Engine_Prototype*) data;
-	char *keymap_string = mmap (NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-	xkb_keymap_unref (Engine->keymap);
-	Engine->keymap = xkb_keymap_new_from_string (Engine->xkb_context, keymap_string, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
-	munmap (keymap_string, size);
-	close (fd);
-	xkb_state_unref (Engine->xkb_state);
-	Engine->xkb_state = xkb_state_new (Engine->keymap);
-}
-void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys){}
-void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface){}
-void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group){}
-void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay){}
-void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state){
-    Engine_Prototype *Engine = (Engine_Prototype*) data;
-    if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-		xkb_keysym_t keysym = xkb_state_key_get_one_sym (Engine->xkb_state, key+8);
-		uint32_t utf32 = xkb_keysym_to_utf32 (keysym);
-		if (utf32) {
-			if (utf32 >= 0x21 && utf32 <= 0x7E) {
-				printf ("the key %c was pressed\n", (char)utf32);
-			}
-			else {
-				printf ("the key U+%04X was pressed\n", utf32);
-			}
-		}
-		else {
-			char name[64];
-			xkb_keysym_get_name (keysym, name, 64);
-			printf ("the key %s was pressed\n", name);
-		}
-	}
-}
-
 
 void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial){
     xdg_wm_base_pong(xdg_wm_base, serial);
 }
+
+
+void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, int32_t w, int32_t h, struct wl_array *states) {}
 
 void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
     xdg_surface_ack_configure(xdg_surface, serial);
     printf("surface configured\n");
 }
 
-void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, int32_t width, int32_t height, struct wl_array *states) {
-    printf("WINDOW RECONFIGURED: %dx%d\n", width, height);
-}
-
 void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel){
-    Engine_Prototype *Engine = (Engine_Prototype*) data;
+    Wl_Engine *Engine = (Wl_Engine*) data;
     printf("WINDOW CLOSED\n");
     Engine->running = false;
 }
@@ -292,7 +256,7 @@ void global_registry_handler(
     const char *interface, 
     uint32_t version
 ){
-    Engine_Prototype *Engine = (Engine_Prototype*) data;
+    Wl_Engine *Engine = (Wl_Engine*) data;
     printf("Got a registry event for %s id %d\n", interface, id);
     if(!strcmp(interface, "wl_compositor")){
         Engine->compositor = wl_registry_bind(registry, id, &wl_compositor_interface, 1);
@@ -323,7 +287,7 @@ void global_registry_remover(void *data, struct wl_registry *registry, uint32_t 
     printf("Got a registry losing event for %d\n", id);
 }
 
-int Init_Engine(Engine_Prototype *Engine) {
+int Init_Engine(Wl_Engine *Engine) {
     Engine->display = wl_display_connect(NULL);
     if (Engine->display == NULL) {
         fprintf(stderr, "Can't connect to display\n");
@@ -338,28 +302,27 @@ int Init_Engine(Engine_Prototype *Engine) {
     };
     wl_registry_add_listener(registry, &registry_listener, (void*)Engine);
     wl_display_roundtrip(Engine->display);
+    wl_display_roundtrip(Engine->display);
 
     if (Engine->compositor == NULL || Engine->xdg_wm_base == NULL) { fprintf(stderr, "Can't find compositor or xdg_wm_base\n"); exit(1); }
     if(!Engine->seat){ fprintf(stderr, "Can't find Keyboard Seat"); exit(1);}
 
-    // surface ~ pixels
+    // surface ~ pixels;
     Engine->surface = wl_compositor_create_surface(Engine->compositor);
 
-    // xdg_surface is just a wrapper over surface
-    Engine->xdg_surface = xdg_wm_base_get_xdg_surface(Engine->xdg_wm_base, Engine->surface);
+    // xdg_surface is just a wrapper over surface;
+    Engine->xdg_surface = xdg_wm_base_get_xdg_surface(Engine->xdg_wm_base, (void*)Engine->surface);
 
     // `xdg_surface_configure` callback runs whenever resized, or changed focus; 
     static const struct xdg_surface_listener xdg_surface_listener = {
         xdg_surface_configure
     };
     xdg_surface_add_listener(Engine->xdg_surface, &xdg_surface_listener, NULL);
-    //                                                                  ^ THIS IS WHAT IS PASSED AS DATA POINTER IN XDG_SURFACE_CONFIGURE CALLBACK ( NO NEED IN GPU RENDERING )
-    
-    // promote xdg_surface to a top level window; dropdown, select etc are other than top level kind.
+
+    // promote xdg_surface to a top level window; dropdown, select etc are other than top level kind;
     Engine->top_window = xdg_surface_get_toplevel(Engine->xdg_surface);
 
-    // listens event got from the window, like, when resized.
-
+    // listens event got from the window, like, when resized;
     static const struct xdg_toplevel_listener xdg_toplevel_listener = {
         .configure        = xdg_toplevel_configure,
         .close            = xdg_toplevel_close,
@@ -369,23 +332,16 @@ int Init_Engine(Engine_Prototype *Engine) {
     // Obvious.
     xdg_toplevel_set_title(Engine->top_window, "My Window");
 
-    // Commit to let compositor know surface is ready
     wl_surface_commit(Engine->surface);
     wl_display_roundtrip(Engine->display);
 
-    // KEYBOARD LISTENER
-    // Used to decode from the format of which wayland gives us the keys(raw_linux_keycode) -> UTF8;
-    Engine->xkb_context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);
-    struct wl_keyboard *keyboard = wl_seat_get_keyboard(Engine->seat);
-    static const struct wl_keyboard_listener keyboard_callbacks = {
-        .keymap      = keyboard_keymap,
-        .enter       = keyboard_enter,
-        .leave       = keyboard_leave,
-        .key         = key_listener,
-        .modifiers   = keyboard_modifiers,
-    };
-    wl_keyboard_add_listener(keyboard, &keyboard_callbacks, (void*)Engine);
-
+    /* 
+    * EGL SETUP
+    * EGL_DISPLAY :    Stores connection to wl_display;
+    * EGL_CONTEXT :    All the metadata for Opengl, eg. Texture, Shaders, VBOs;
+    * EGL_WINDOW  :    Stores connection to wl_surface;
+    * EGL_SURFACE :    Pixel Buffer (+metadata);
+    */
     // WL_DISPLAY -|> EGL_DISPLAY
     Engine->egl_display = eglGetDisplay((EGLNativeDisplayType)Engine->display);
     eglInitialize(Engine->egl_display, NULL, NULL);
@@ -406,17 +362,18 @@ int Init_Engine(Engine_Prototype *Engine) {
         EGL_CONTEXT_MINOR_VERSION, 3,
         EGL_NONE
     };
-    // EGL CONTEXT on which OpenGL can draw
+
+    // EGL CONTEXT on which OpenGL can draw;
     Engine->egl_context = eglCreateContext(Engine->egl_display, config, EGL_NO_CONTEXT, ctx_attribs);
 
-    // WL_SURFACE -|> EGL_WINDOW (+EGL_CONFIG +EGL_DISPLAY) -|> EGL_SURFACE
+    // WL_SURFACE -|> EGL_WINDOW (+EGL_CONFIG +EGL_DISPLAY) -|> EGL_SURFACE;
     Engine->egl_window  = wl_egl_window_create(Engine->surface, width, height);
     Engine->egl_surface = eglCreateWindowSurface(Engine->egl_display, config, (EGLNativeWindowType)Engine->egl_window, NULL);
 
-    // Set current Display, Draw/Read Surfaces, Context (Doing it before the loop because only single window is enough for this project)
-    // Whatever OpenGl does, it'll do on the surface which was marked by the latest eglMakeCurrent Call
+    // Set current Display, Draw/Read Surfaces, Context (Doing it before the loop because only single window is enough for this project);
+    // Activating this context which will be used be subsequent calls from opengl;
     eglMakeCurrent(Engine->egl_display, Engine->egl_surface, Engine->egl_surface, Engine->egl_context);
-    //                          ^ Draw Surface  ^ Read Surface
+    //                                  ^ Draw Surface       ^ Read Surface
     
     if (!gladLoadGL((GLADloadfunc)eglGetProcAddress)) {
         fprintf(stderr, "Failed to initialize GLAD\n");
