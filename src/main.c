@@ -7,9 +7,19 @@ static struct wl_callback_listener frame_listener = {
 void Draw_Frame(Global_State *GState){
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+    int X = 0, Y = 0;
     for(int i = 0; i < GState->State->n; ++i){
-        item _item = GState->State->dir[i];
-        render_text(GState->Engine, _item.name, 0.0f, i * 40, 0.4f, 1.0f, 1.0f, 1.0f);
+        Item _item = GState->State->dir[i];
+        float x = X + GState->State->padding;
+        float y = Y + GState->State->padding;
+        render_text(GState->Engine, _item.name, x, y, 0.4f, 1.0f, 1.0f, 1.0f, GState->State->slot_w - GState->State->padding * 2);
+        if(X + GState->State->slot_w + GState->State->padding * 2 > GState->Engine->width){
+            X = 0;
+            Y += GState->State->slot_h;
+        }
+        else {
+            X += GState->State->slot_w;
+        }
     }
 }
 
@@ -42,17 +52,17 @@ void Load_dir(App_State *State, char *path){
     DIR *dir;
     struct dirent *entry;
     State->n = 0;
-    dir = opendir(path);
+    dir = opendir(path ? path : State->current_path->path);
     while ((entry = readdir(dir)) != NULL) {
         char *n = entry->d_name;
         if(!strcmp(".", n) || !strcmp("..", n)) continue;
         struct stat st;
         lstat(n, &st); 
         item_type t = S_ISDIR(st.st_mode)? type_dir: type_file;
-        item _item = {
+        Item _item = {
             .type = t
         };
-        snprintf(_item.name, 128, "%s", n);
+        snprintf(_item.name, 40, "%s", n);
         State->dir[State->n] = _item;
         State->n++;
     }
@@ -69,34 +79,71 @@ void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, i
 	xkb_state_unref (Engine->xkb_state);
 	Engine->xkb_state = xkb_state_new (Engine->keymap);
 }
-void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys){}
+void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys){
+}
 void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface){}
-void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group){}
+void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group){
+	Global_State *GState = (Global_State*) data;
+    xkb_state_update_mask(GState->Engine->xkb_state, mods_depressed, mods_latched, mods_locked, 0, 0, group);
+}
 void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay){}
-
 void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state){
-	   Global_State *GState = (Global_State*) data;
-	   if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-		xkb_keysym_t keysym = xkb_state_key_get_one_sym (GState->Engine->xkb_state, key+8);
-		uint32_t utf32 = xkb_keysym_to_utf32 (keysym);
-		if (utf32) {
-           if(utf32 == 'h'){
-               chdir("..");
-               Load_dir(GState->State, ".");
-               GState->Engine->dirty = true;
-           }
-		}
-		else {
-			char name[64];
-			xkb_keysym_get_name (keysym, name, 64);
-			printf ("the key %s was pressed\n", name);
-		}
-	}
+	Global_State *GState = (Global_State*) data;
+    bool pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
+    xkb_keysym_t keysym = xkb_state_key_get_one_sym (GState->Engine->xkb_state, key+8);
+    char name[64];
+    xkb_keysym_get_name(keysym, name, 64);
+    printf ("the key %s was pressed\n", name);
+    uint32_t utf32 = xkb_keysym_to_utf32 (keysym);
+    if(pressed){
+        switch(utf32){
+            case 'H':
+                if(GState->State->current_path->prev){
+                    GState->State->current_path = GState->State->current_path->prev;
+                    Load_dir(GState->State, NULL);
+                    GState->Engine->dirty = true;
+                }
+                break;
+            case 'L':
+                if(GState->State->current_path->next){
+                    GState->State->current_path = GState->State->current_path->next;
+                    Load_dir(GState->State, NULL);
+                    GState->Engine->dirty = true;
+                }
+                break;
+        }
+    }
+}
+void Build_Dir_Stack(App_State *State){
+    if(!State->dir_stack){
+        char *cwd = getcwd(NULL, 0);
+        Path *prev = NULL;
+        // Back tracking from cwd
+        for(;;){
+            Path *path = malloc(sizeof(Path));
+            char *c_path = getcwd(NULL, 0);
+            path->path = c_path;
+            path->next = prev;
+            path->prev = NULL;
+            if(prev){
+                prev->prev = path;
+            }
+            if(!strcmp(c_path, cwd)){
+                State->current_path = path;
+            }
+            else if(!strcmp(c_path, "/")){
+                break;
+            }
+            prev = path;
+            chdir("..");
+        }
+        chdir(cwd);
+        free(cwd);
+    }
 }
 int main(int argv, char *argc[]) {
     Wl_Engine Engine = { .running = true, .dirty = true };
-    char *cwd = getcwd(NULL, 0);
-    App_State State = { .path = cwd, .n = 0 };
+    App_State State = { .dir_stack = NULL, .current_path = NULL, .n = 0, .slot_w = 150, .slot_h = 80, .padding = 10};
     Init_Engine(&Engine);
     Global_State GState = {&Engine, &State};
 
@@ -111,15 +158,15 @@ int main(int argv, char *argc[]) {
     };
     wl_keyboard_add_listener(keyboard, &keyboard_callbacks, (void*) &GState);
 
-    if ((State.dir = malloc(1024 * sizeof(item))) == NULL) {
+    if ((State.dir = malloc(1024 * sizeof(Item))) == NULL) {
         fprintf(stderr, "malloc");
         exit(1);
     }
     State.allocated = 1024;
-    Load_dir(&State, State.path);
+    Build_Dir_Stack(&State);
+    Load_dir(&State, NULL);
 
     Render(&GState);
-
 
     while (Engine.running) {
         wl_display_dispatch(Engine.display);

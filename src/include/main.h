@@ -12,16 +12,31 @@ typedef enum item_type {
     type_dir
 } item_type;
 
-typedef struct item {
+typedef enum Mode {
+    NORMAL = 0,
+} Mode;
+
+typedef struct Item {
    item_type type; 
    char name[128];
-} item;
+} Item;
+
+typedef struct Path {
+    struct Path *next;
+    struct Path *prev;
+    char *path;
+} Path;
 
 typedef struct App_State {
-    char *path;
+    Mode mode;
+    Path *dir_stack;
+    Path *current_path;
     unsigned int n;  
     unsigned int allocated;
-    item *dir;
+    unsigned int slot_w; 
+    unsigned int slot_h; 
+    unsigned int padding;
+    Item *dir;
 } App_State;
 
 typedef struct Global_State {

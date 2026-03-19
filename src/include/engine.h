@@ -37,6 +37,8 @@ typedef struct {
 typedef struct Wl_Engine{
     bool running;
     bool dirty;
+    unsigned int width;
+    unsigned int height;
     struct wl_display *display;
     struct wl_seat *seat;
     struct wl_compositor *compositor;
@@ -57,6 +59,7 @@ typedef struct Wl_Engine{
     Glyph glyphs[128];
     unsigned int VAO, VBO;
     int ascender;
+    int descender;
     unsigned int shader;
 } Wl_Engine;
 
@@ -66,7 +69,7 @@ unsigned int create_shader(const char *vert_path, const char *frag_path);
 
 void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size);
 
-void render_text(Wl_Engine *Engine, const char *text, float x, float y, float scale, float r, float g, float b) ;
+void render_text(Wl_Engine *Engine, const char *text, float x, float y, float scale, float r, float g, float b, float max_width) ;
 
 void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial);
 

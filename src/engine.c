@@ -1,7 +1,5 @@
 #include "include/engine.h"
 
-unsigned int width;
-unsigned int height;
 
 // SHADER / TEXT
 char *vert_src = {
@@ -72,6 +70,7 @@ void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size) {
 
     // (todo) don't know, will figure out;
     Engine->ascender = face->size->metrics.ascender >> 6;
+    Engine->descender = face->size->metrics.descender >> 6;
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     // For every gylph of a character, there is a bitmap texture of pixels, of course;
@@ -156,7 +155,8 @@ void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size) {
     //        ←——— 16 bytes ————→ (stride)
 }
 
-void render_text(Wl_Engine *Engine, const char *text, float x, float y, float scale, float r, float g, float b) {
+void render_text(Wl_Engine *Engine, const char *text, float orig_x, float orig_y, float scale, float r, float g, float b, float max_width) {
+
     glUseProgram(Engine->shader);
     glUniform3f(glGetUniformLocation(Engine->shader, "textColor"), r, g, b);
     glActiveTexture(GL_TEXTURE0);
@@ -169,6 +169,9 @@ void render_text(Wl_Engine *Engine, const char *text, float x, float y, float sc
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    float x = orig_x;
+    float y = orig_y;
+    float line_height = (Engine->ascender - Engine->descender) * scale;
     for (const char *c = text; *c; c++) {
         Glyph *g = &Engine->glyphs[(unsigned char)*c];
         float w = g->width  * scale;
@@ -213,7 +216,13 @@ void render_text(Wl_Engine *Engine, const char *text, float x, float y, float sc
         // Shift the cursor past the character;
         // in FreeType for advance 1 pixel = 64;
         // so to get the actual pixel value, its shifted by 6 bits, which is dividing it by 64;
-        x += (g->advance >> 6) * scale; 
+        if(xpos + w > orig_x + max_width){
+            y += line_height;
+            x = orig_x;
+        }
+        else {
+            x += (g->advance >> 6) * scale; 
+        }
     }
 }
 
@@ -243,9 +252,10 @@ void output_scale(void *data, struct wl_output *output, int32_t factor) {}
 void output_mode(void *data, struct wl_output *output,
                         uint32_t flags, int32_t w, int32_t h,
                         int32_t refresh) {
+    Wl_Engine *Engine = (Wl_Engine*) data;
     if (flags & WL_OUTPUT_MODE_CURRENT) {
-        width = w;
-        height = h;
+        Engine->width = w;
+        Engine->height = h;
     }
 }
 
@@ -279,7 +289,7 @@ void global_registry_handler(
             .done     = output_done,
             .scale    = output_scale,
         };
-        wl_output_add_listener(output, &output_listener, NULL);
+        wl_output_add_listener(output, &output_listener, Engine);
     }
 }
 
@@ -367,7 +377,7 @@ int Init_Engine(Wl_Engine *Engine) {
     Engine->egl_context = eglCreateContext(Engine->egl_display, config, EGL_NO_CONTEXT, ctx_attribs);
 
     // WL_SURFACE -|> EGL_WINDOW (+EGL_CONFIG +EGL_DISPLAY) -|> EGL_SURFACE;
-    Engine->egl_window  = wl_egl_window_create(Engine->surface, width, height);
+    Engine->egl_window  = wl_egl_window_create(Engine->surface, Engine->width, Engine->height);
     Engine->egl_surface = eglCreateWindowSurface(Engine->egl_display, config, (EGLNativeWindowType)Engine->egl_window, NULL);
 
     // Set current Display, Draw/Read Surfaces, Context (Doing it before the loop because only single window is enough for this project);
@@ -384,7 +394,7 @@ int Init_Engine(Wl_Engine *Engine) {
     Engine->shader = create_shader("shaders/text.vert", "shaders/text.frag");
     init_freetype(Engine, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48);
     float projection[16];
-    make_ortho(projection, 0, width, height, 0);
+    make_ortho(projection, 0, Engine->width, Engine->height, 0);
     glUseProgram(Engine->shader);
     glUniformMatrix4fv(glGetUniformLocation(Engine->shader, "projection"), 1, GL_FALSE, projection);
 }
