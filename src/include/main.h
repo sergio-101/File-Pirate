@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ENTER 13
+
 typedef enum item_type {
     type_file = 0, 
     type_dir
@@ -18,6 +20,7 @@ typedef enum Mode {
 
 typedef struct Item {
    item_type type; 
+   bool selected;
    char name[128];
 } Item;
 
@@ -31,6 +34,8 @@ typedef struct App_State {
     Mode mode;
     Path *dir_stack;
     Path *current_path;
+    int cursor;
+    char *cmd;
     unsigned int n;  
     unsigned int allocated;
     unsigned int slot_w; 
@@ -44,6 +49,7 @@ typedef struct Global_State {
     App_State *State;
 } Global_State;
 
+void Load_directory(App_State *State);
 void Frame_callback(void* data, struct wl_callback* wl_cb, uint callback_data);
 void Render(Global_State *GState);
 

@@ -57,10 +57,13 @@ typedef struct Wl_Engine{
 
     // Preloaded resolution for all the characters, indexed by ascii index: 65 -> 'A'.
     Glyph glyphs[128];
-    unsigned int VAO, VBO;
+    unsigned int Font_VAO, Font_VBO;
     int ascender;
     int descender;
-    unsigned int shader;
+    unsigned int Font_shader;
+
+    // RECT
+    unsigned int Rect_VAO, Rect_VBO, Rect_shader;
 } Wl_Engine;
 
 void make_ortho(float *m, float l, float r, float b, float t);
@@ -70,6 +73,8 @@ unsigned int create_shader(const char *vert_path, const char *frag_path);
 void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size);
 
 void render_text(Wl_Engine *Engine, const char *text, float x, float y, float scale, float r, float g, float b, float max_width) ;
+
+void render_rect(Wl_Engine *Engine, float x, float y, float w, float h, float r, float g, float b);
 
 void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial);
 

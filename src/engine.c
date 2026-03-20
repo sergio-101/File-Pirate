@@ -2,7 +2,7 @@
 
 
 // SHADER / TEXT
-char *vert_src = {
+char *font_vert_src = {
     "#version 330 core\n"
     "layout(location = 0) in vec4 vertex;\n"
     "out vec2 TexCoords;\n"
@@ -13,7 +13,7 @@ char *vert_src = {
     "}\n"
 };
 
-char *frag_src = {
+char *font_frag_src = {
     "#version 330 core\n"
     "in vec2 TexCoords;\n"
     "out vec4 color;\n"
@@ -22,6 +22,23 @@ char *frag_src = {
     "void main() {\n"
     "    float alpha = texture(text, TexCoords).r;\n"
     "    color = vec4(textColor, alpha);\n"
+    "}\n"
+};
+char *rect_vert_src = {
+    "#version 330 core\n"
+    "layout(location = 0) in vec2 pos;\n"
+    "uniform mat4 projection;\n"
+    "void main() {\n"
+    "    gl_Position = projection * vec4(pos, 0.0, 1.0);\n"
+    "}\n"
+};
+
+char *rect_frag_src = {
+    "#version 330 core\n"
+    "uniform vec3 rectColor;\n"
+    "out vec4 color;\n"
+    "void main() {\n"
+    "    color = vec4(rectColor, 1.0);\n"
     "}\n"
 };
 
@@ -35,7 +52,7 @@ void make_ortho(float *m, float l, float r, float b, float t) {
     m[15] =  1.0f;
 }
 
-unsigned int create_shader(const char *vert_path, const char *frag_path) {
+unsigned int create_shader(const char *vert_src, const char *frag_src) {
     unsigned int vert = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vert, 1, (const char **)&vert_src, NULL);
     glCompileShader(vert);
@@ -117,9 +134,9 @@ void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size) {
 
     // We allocate place for VAO, VBO in GPU and store the handle to it in our global engine;
     // Setup VBO: allocating VBO buffer and storing the handle;
-    glGenBuffers(1, &Engine->VBO);
+    glGenBuffers(1, &Engine->Font_VBO);
     // activating;
-    glBindBuffer(GL_ARRAY_BUFFER, Engine->VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, Engine->Font_VBO);
 
     // Reserve `(sizeof(float) * 6 * 4)` bytes on currently activated buffer;
     // (sizeof(float) * 6 * 4) => One Quad (Rectangle) = 2 Triangles = 6 Vertices; 
@@ -132,17 +149,17 @@ void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size) {
 
     // Setup VAO: VAO is definition of data being sent in VBO buffer;
     // allocating and storing the handle;
-    glGenVertexArrays(1, &Engine->VAO);
+    glGenVertexArrays(1, &Engine->Font_VAO);
 
     // making active;
-    glBindVertexArray(Engine->VAO);
+    glBindVertexArray(Engine->Font_VAO);
 
     // something for legacy ig;
     glEnableVertexAttribArray(0);
     // Actually defining the VAO for the last activated VAO;
     glVertexAttribPointer(
         0,                  // attr slot = 0;
-        4,                  // 4 floats/vertex; 
+        4,                  // (4 floats)/vertex; 
         GL_FLOAT,           // floats;
         GL_FALSE,           // don't normalize ;
         4 * sizeof(float),  // stride: bytes one vertex takes;
@@ -155,15 +172,38 @@ void init_freetype(Wl_Engine *Engine, const char *font_path, int font_size) {
     //        ←——— 16 bytes ————→ (stride)
 }
 
-void render_text(Wl_Engine *Engine, const char *text, float orig_x, float orig_y, float scale, float r, float g, float b, float max_width) {
+void Init_Rect_Graphics(Wl_Engine *Engine, char *VAO, char *VBO){
+    glGenVertexArrays(1, &Engine->Rect_VAO);
+    glGenBuffers(1, &Engine->Rect_VBO);
 
-    glUseProgram(Engine->shader);
-    glUniform3f(glGetUniformLocation(Engine->shader, "textColor"), r, g, b);
+    glBindVertexArray(Engine->Rect_VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, Engine->Rect_VBO);
+
+    // Allocating Space, 6 vertices * 2 floats (just x & y, uv not needed; therefore 2);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(
+        0,                      // slot 
+        2,                      // (2 floats) / vertex
+        GL_FLOAT, 
+        GL_FALSE, 
+        2 * sizeof(float),
+        0
+    );
+    glEnableVertexAttribArray(0);
+}
+
+void render_text(Wl_Engine *Engine, const char *text, float orig_x, float orig_y, float scale, float r, float g, float b, float max_width) {
+    r = r / 255;
+    g = g / 255;
+    b = b / 255;
+
+    glUseProgram(Engine->Font_shader);
+    glUniform3f(glGetUniformLocation(Engine->Font_shader, "textColor"), r, g, b);
     glActiveTexture(GL_TEXTURE0);
 
     // Activate the VAO and VBO
-    glBindVertexArray(Engine->VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, Engine->VBO);
+    glBindVertexArray(Engine->Font_VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, Engine->Font_VBO);
 
     // for transparent part of gylph
     glEnable(GL_BLEND);
@@ -226,6 +266,25 @@ void render_text(Wl_Engine *Engine, const char *text, float orig_x, float orig_y
     }
 }
 
+void render_rect(Wl_Engine *Engine, float x, float y, float w, float h, float r, float g, float b) {
+    float vertices[6][2] = {
+        { x,     y     },   
+        { x + w, y     },   
+        { x,     y + h },   
+        { x + w, y     },   
+        { x + w, y + h },   
+        { x,     y + h },   
+    };
+    r = r / 255;
+    g = g / 255;
+    b = b / 255;
+    glUseProgram(Engine->Rect_shader);
+    glUniform3f(glGetUniformLocation(Engine->Rect_shader, "rectColor"), r, g, b);
+    glBindVertexArray(Engine->Rect_VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, Engine->Rect_VBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
 
 void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial){
     xdg_wm_base_pong(xdg_wm_base, serial);
@@ -391,10 +450,19 @@ int Init_Engine(Wl_Engine *Engine) {
     }
 
     // OpenGL
-    Engine->shader = create_shader("shaders/text.vert", "shaders/text.frag");
+    
+    // FONT
+    Engine->Font_shader = create_shader(font_vert_src, font_frag_src);
     init_freetype(Engine, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48);
+
+    // Rectangles
+    Engine->Rect_shader = create_shader(rect_vert_src, rect_frag_src);
+    Init_Rect_Graphics(Engine, rect_vert_src, rect_frag_src);
+
     float projection[16];
     make_ortho(projection, 0, Engine->width, Engine->height, 0);
-    glUseProgram(Engine->shader);
-    glUniformMatrix4fv(glGetUniformLocation(Engine->shader, "projection"), 1, GL_FALSE, projection);
+    glUseProgram(Engine->Font_shader);
+    glUniformMatrix4fv(glGetUniformLocation(Engine->Font_shader, "projection"), 1, GL_FALSE, projection);
+    glUseProgram(Engine->Rect_shader);
+    glUniformMatrix4fv(glGetUniformLocation(Engine->Rect_shader, "projection"), 1, GL_FALSE, projection);
 }
