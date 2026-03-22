@@ -5,8 +5,6 @@ void print_stack(App_State *State){
     Path *node = State->current_path;
     while(node->prev != NULL) node = node->prev;
     while(true) {
-        printf("%s", node->path);
-        if(node == State->current_path) printf("  (< CURRENT DIRECTORY)\n"); else printf("\n");
         if(!node->next){
             break;
         }
@@ -29,18 +27,16 @@ void Draw_Frame(Global_State *GState){
         if(_item.selected || GState->State->cursor == i){
             render_rect(
                 GState->Engine, x, y, 
-                GState->State->slot_w - GState->State->padding * 2, 
-                GState->State->slot_h - GState->State->padding * 2, 
+                GState->State->slot_w, 
+                GState->State->slot_h, 
                 200, 100, 200
             );
         }
-        render_text(GState->Engine, _item.name, x, y, 0.4f, 255, 255, 255, GState->State->slot_w - GState->State->padding * 2);
-        if(X + GState->State->slot_w + GState->State->padding * 2 > GState->Engine->width){
+        render_text(GState->Engine, _item.name, x + GState->State->padding, y + GState->State->padding, 0.4f, 255, 255, 255, GState->State->slot_w - GState->State->padding * 2);
+        X += GState->State->slot_w;
+        if(X + GState->State->slot_w > GState->Engine->width){
             X = 0;
             Y += GState->State->slot_h;
-        }
-        else {
-            X += GState->State->slot_w;
         }
     }
     render_rect(GState->Engine, 0, GState->Engine->height - 50, GState->Engine->width, 50, 100, 100, 200);
@@ -183,12 +179,34 @@ void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uin
                 }
                 break;
 
+            case 'j':{
+                // starts from 0 to (files_per_row - 1);
+                int c_col = GState->State->cursor / GState->State->files_per_row;
+                int c_row = GState->State->cursor % GState->State->files_per_row;
+                c_col++;
+                int next_index = c_col * GState->State->files_per_row + c_row;
+                if(next_index < GState->State->n){
+                    GState->State->cursor = next_index;
+                }
+                break;
+            }
+
+            case 'k':{
+                // starts from 0 to (files_per_row - 1);
+                int c_col = GState->State->cursor / GState->State->files_per_row;
+                int c_row = GState->State->cursor % GState->State->files_per_row;
+                c_col--;
+                int next_index = c_col * GState->State->files_per_row + c_row;
+                if(0 <= next_index){
+                    GState->State->cursor = next_index;
+                }
+                break;
+            }
             case 'l':
                 if(GState->State->cursor < GState->State->n - 1){
                     GState->State->cursor++;
                 }
                 break;
-
             case ENTER:
                 Item item = GState->State->dir[GState->State->cursor];
                 if(item.type == type_dir){
@@ -240,7 +258,8 @@ int main(int argv, char *argc[]) {
     };
     Init_Engine(&Engine);
     Global_State GState = {&Engine, &State};
-
+    State.files_per_row = Engine.width / State.slot_w;
+    printf("%d\n", State.files_per_row);
     Engine.xkb_context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);
     struct wl_keyboard *keyboard = wl_seat_get_keyboard(Engine.seat);
     static const struct wl_keyboard_listener keyboard_callbacks = {

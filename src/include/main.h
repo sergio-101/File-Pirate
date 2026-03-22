@@ -34,6 +34,7 @@ typedef struct App_State {
     Mode mode;
     Path *dir_stack;
     Path *current_path;
+    int files_per_row;
     int cursor;
     char *cmd;
     unsigned int n;  
