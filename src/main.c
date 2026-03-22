@@ -19,7 +19,7 @@ static struct wl_callback_listener frame_listener = {
 void Draw_Frame(Global_State *GState){
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    int X = 0, Y = 0;
+    int X = 0, Y = -GState->State->fov_y;
     for(int i = 0; i < GState->State->n; ++i){
         Item _item = GState->State->dir[i];
         float x = X + GState->State->padding;
@@ -39,9 +39,9 @@ void Draw_Frame(Global_State *GState){
             Y += GState->State->slot_h;
         }
     }
-    render_rect(GState->Engine, 0, GState->Engine->height - 50, GState->Engine->width, 50, 100, 100, 200);
+    render_rect(GState->Engine, 0, GState->Engine->height - GState->State->cmd_height, GState->Engine->width, GState->State->cmd_height, 100, 100, 200);
     if(GState->State->cmd){
-        render_text(GState->Engine, GState->State->cmd, 0, GState->Engine->height - 50, 0.4f, 0, 0, 0, GState->Engine->width);
+        render_text(GState->Engine, GState->State->cmd, 0, GState->Engine->height - GState->State->cmd_height, 0.4f, 0, 0, 0, GState->Engine->width);
     }
 }
 
@@ -116,6 +116,8 @@ void Open_Directory(App_State *State, char *dir){
     path->next = NULL;
     c_path->next = path;
     State->current_path = path;
+    State->cursor = 0;
+    State->fov_y = 0;
     Load_directory(State);
 }
 
@@ -158,6 +160,7 @@ void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uin
                     chdir(GState->State->current_path->path);
                     Load_directory(GState->State);
                     GState->State->cursor = 0;
+                    GState->State->fov_y = 0;
                     GState->Engine->dirty = true;
                 }
                 break;
@@ -167,10 +170,12 @@ void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uin
                     GState->State->current_path = GState->State->current_path->next;
                     chdir(GState->State->current_path->path);
                     Load_directory(GState->State);
-                    Load_directory(GState->State);
                     GState->State->cursor = 0;
+                    GState->State->fov_y = 0;
                     GState->Engine->dirty = true;
                 }
+                break;
+            case 'K':
                 break;
                 
             case 'h':
@@ -187,6 +192,12 @@ void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uin
                 int next_index = c_col * GState->State->files_per_row + c_row;
                 if(next_index < GState->State->n){
                     GState->State->cursor = next_index;
+                    GState->State->cursor_y_pos = c_col * GState->State->slot_h;
+                    int cursor_y = c_col * GState->State->slot_h;
+                    int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
+                    if(GState->Engine->height - GState->State->cmd_height < cursor_y_rel_to_screen + GState->State->slot_h){
+                        GState->State->fov_y += GState->State->slot_h;
+                    }
                 }
                 break;
             }
@@ -199,6 +210,11 @@ void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uin
                 int next_index = c_col * GState->State->files_per_row + c_row;
                 if(0 <= next_index){
                     GState->State->cursor = next_index;
+                    int cursor_y = c_col * GState->State->slot_h;
+                    int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
+                    if(cursor_y_rel_to_screen < 0){
+                        GState->State->fov_y -= GState->State->slot_h;
+                    }
                 }
                 break;
             }
@@ -211,9 +227,8 @@ void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uin
                 Item item = GState->State->dir[GState->State->cursor];
                 if(item.type == type_dir){
                     Open_Directory(GState->State, item.name);
-                    GState->State->cursor = 0;
                 }
-
+                break;
         }
     }
 }
@@ -250,7 +265,9 @@ int main(int argv, char *argc[]) {
         .dir_stack = NULL,
         .current_path = NULL,
         .cmd = NULL,
+        .cmd_height = 50,
         .cursor = 0,
+        .cursor_y_pos = 0,
         .n = 0,
         .slot_w = 150,
         .slot_h = 80, 
@@ -259,7 +276,6 @@ int main(int argv, char *argc[]) {
     Init_Engine(&Engine);
     Global_State GState = {&Engine, &State};
     State.files_per_row = Engine.width / State.slot_w;
-    printf("%d\n", State.files_per_row);
     Engine.xkb_context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);
     struct wl_keyboard *keyboard = wl_seat_get_keyboard(Engine.seat);
     static const struct wl_keyboard_listener keyboard_callbacks = {

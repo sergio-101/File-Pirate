@@ -29,6 +29,10 @@ typedef struct Path {
     struct Path *prev;
     char *path;
 } Path;
+typedef struct Vector2 {
+    unsigned int x;
+    unsigned int y;
+} Vector2;
 
 typedef struct App_State {
     Mode mode;
@@ -36,8 +40,12 @@ typedef struct App_State {
     Path *current_path;
     int files_per_row;
     int cursor;
+    int cursor_y_pos;
     char *cmd;
+    unsigned int cmd_height; 
+    unsigned int fov_y;
     unsigned int n;  
+    unsigned int total_rows;  
     unsigned int allocated;
     unsigned int slot_w; 
     unsigned int slot_h; 
