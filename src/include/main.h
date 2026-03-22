@@ -8,6 +8,7 @@
 #include <string.h>
 
 #define ENTER 13
+#define ESCAPE 27
 
 typedef enum item_type {
     type_file = 0, 
@@ -16,6 +17,7 @@ typedef enum item_type {
 
 typedef enum Mode {
     NORMAL = 0,
+    VISUAL
 } Mode;
 
 typedef struct Item {
@@ -41,6 +43,7 @@ typedef struct App_State {
     int files_per_row;
     int cursor;
     int cursor_y_pos;
+    int visual_start;
     char *cmd;
     unsigned int cmd_height; 
     unsigned int fov_y;

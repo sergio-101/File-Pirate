@@ -295,7 +295,7 @@ void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, int32_t w
 
 void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
     xdg_surface_ack_configure(xdg_surface, serial);
-    printf("surface configured\n");
+    // printf("surface configured\n");
 }
 
 void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel){

@@ -1,5 +1,10 @@
 #include "include/main.h"
 
+#define CTRL 0b0001
+#define SHIFT 0b0010
+#define ALT 0b0100
+#define PRESSED 0b1000
+
 // (todo): For Debugging Only, Delete This.
 void print_stack(App_State *State){
     Path *node = State->current_path;
@@ -32,16 +37,38 @@ void Draw_Frame(Global_State *GState){
                 200, 100, 200
             );
         }
-        render_text(GState->Engine, _item.name, x + GState->State->padding, y + GState->State->padding, 0.4f, 255, 255, 255, GState->State->slot_w - GState->State->padding * 2);
+        render_text(
+            GState->Engine,
+            _item.name,
+            x + GState->State->padding,
+            y + GState->State->padding,
+            0.4f, 255, 255, 255,
+            GState->State->slot_w - GState->State->padding * 2
+        );
+
         X += GState->State->slot_w;
         if(X + GState->State->slot_w > GState->Engine->width){
             X = 0;
             Y += GState->State->slot_h;
         }
     }
-    render_rect(GState->Engine, 0, GState->Engine->height - GState->State->cmd_height, GState->Engine->width, GState->State->cmd_height, 100, 100, 200);
+    render_rect(
+        GState->Engine,
+        0,
+        GState->Engine->height - GState->State->cmd_height,
+        GState->Engine->width,
+        GState->State->cmd_height,
+        100, 100, 200
+    );
     if(GState->State->cmd){
-        render_text(GState->Engine, GState->State->cmd, 0, GState->Engine->height - GState->State->cmd_height, 0.4f, 0, 0, 0, GState->Engine->width);
+        render_text(
+            GState->Engine,
+            GState->State->cmd,
+            0, GState->Engine->height - GState->State->cmd_height,
+            0.4f, 
+            0, 0, 0,
+            GState->Engine->width
+        );
     }
 }
 
@@ -120,7 +147,179 @@ void Open_Directory(App_State *State, char *dir){
     State->fov_y = 0;
     Load_directory(State);
 }
+bool push_cursor_down(Global_State *GState){
+    // starts from 0 to (files_per_row - 1);
+    int c_col = GState->State->cursor / GState->State->files_per_row;
+    int c_row = GState->State->cursor % GState->State->files_per_row;
+    c_col++;
+    int next_index = c_col * GState->State->files_per_row + c_row;
+    if(next_index < GState->State->n){
+        GState->State->cursor = next_index;
+        GState->State->cursor_y_pos = c_col * GState->State->slot_h;
+        int cursor_y = c_col * GState->State->slot_h;
+        int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
+        if(GState->Engine->height - GState->State->cmd_height < cursor_y_rel_to_screen + GState->State->slot_h){
+            GState->State->fov_y += GState->State->slot_h;
+        }
+        return true;
+    }
+}
+bool push_cursor_up(Global_State *GState){
+    // starts from 0 to (files_per_row - 1);
+    int c_col = GState->State->cursor / GState->State->files_per_row;
+    int c_row = GState->State->cursor % GState->State->files_per_row;
+    c_col--;
+    int next_index = c_col * GState->State->files_per_row + c_row;
+    if(0 <= next_index){
+        GState->State->cursor = next_index;
+        int cursor_y = c_col * GState->State->slot_h;
+        int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
+        if(cursor_y_rel_to_screen < 0){
+            GState->State->fov_y -= GState->State->slot_h;
+        }
+        return true;
+    }
+}
+void select_from_till(Global_State *GState, int from , int to){
+    for(int i = 0; i < GState->State->n; i++){
+        int included = (from <= i && i <= to); 
+        Item *item = &GState->State->dir[i];
+        if(included){
+            item->selected = true;
+        }
+        else{
+            item->selected = false;
+        }
+    }
+}
+void Update_Visual_Block(Global_State *GState){
+    int from = GState->State->cursor;
+    int to = GState->State->visual_start;
+    if(GState->State->visual_start < GState->State->cursor){
+        from = GState->State->visual_start;
+        to = GState->State->cursor;
+    };
+    select_from_till(GState, from, to);
+}
+void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
+    bool pressed = extras_flag & PRESSED;
+    bool shift = extras_flag & SHIFT;
+    bool ctrl = extras_flag & CTRL;
+    bool alt = extras_flag & ALT;
+    // if(GState->State->cmd) free(GState->State->cmd);
+    // char str[2] = {key, '\0'};
+    // GState->State->cmd = strdup(str);
+    if(GState->State->mode == NORMAL){
+        if(pressed){
+            switch(key){
+                case 'H':
+                    if(GState->State->current_path->prev){
+                        GState->State->current_path = GState->State->current_path->prev;
+                        chdir(GState->State->current_path->path);
+                        Load_directory(GState->State);
+                        GState->State->cursor = 0;
+                        GState->State->fov_y = 0;
+                        GState->Engine->dirty = true;
+                    }
+                    break;
 
+                case 'L':
+                    if(GState->State->current_path->next){
+                        GState->State->current_path = GState->State->current_path->next;
+                        chdir(GState->State->current_path->path);
+                        Load_directory(GState->State);
+                        GState->State->cursor = 0;
+                        GState->State->fov_y = 0;
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+
+                case 'h':
+                    if( 0 < GState->State->cursor){
+                        GState->State->cursor--;
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+
+                case 'j':{
+                    if(push_cursor_down(GState)) GState->Engine->dirty = true;
+                    break;
+                }
+
+                case 'k':{
+                    if(push_cursor_up(GState)) GState->Engine->dirty = true;
+                    break;
+                }
+                case 'l':
+                    if(GState->State->cursor < GState->State->n - 1){
+                        GState->State->cursor++;
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+
+                case ENTER:
+                    Item item = GState->State->dir[GState->State->cursor];
+                    if(item.type == type_dir){
+                        Open_Directory(GState->State, item.name);
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+            }
+        }
+        else{
+            switch(key){
+                case 'v':
+                case 'V':
+                    GState->State->visual_start = GState->State->cursor;
+                    GState->State->dir[GState->State->cursor].selected = true;
+                    GState->State->mode = VISUAL;
+                    GState->Engine->dirty = true;
+                    break;
+            }
+        }
+    }
+    else if(GState->State->mode == VISUAL){
+        if(pressed){
+            switch(key){
+                case ESCAPE:
+                    // resets the visual block; 
+                    select_from_till(GState, -1, -1);
+                    GState->State->mode = NORMAL;
+                    GState->Engine->dirty = true;
+                    break;
+                case 'j':{
+                    if(push_cursor_down(GState)) {
+                        Update_Visual_Block(GState);                        
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+                }
+
+                case 'k':{
+                    if(push_cursor_up(GState)) {
+                        Update_Visual_Block(GState);                        
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+                }
+                case 'l':
+                    if(GState->State->cursor < GState->State->n - 1){
+                        GState->State->cursor++;
+                        Update_Visual_Block(GState);                        
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+                case 'h':
+                    if(0 < GState->State->cursor){
+                        GState->State->cursor--;
+                        Update_Visual_Block(GState);                        
+                        GState->Engine->dirty = true;
+                    }
+                    break;
+            }
+        }        
+    }
+}
 void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size){
     Wl_Engine *Engine = ((Global_State*)data)->Engine;
 	char *keymap_string = mmap (NULL, size, PROT_READ, MAP_SHARED, fd, 0);
@@ -142,95 +341,30 @@ void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate,
 void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state){
 	Global_State *GState = (Global_State*) data;
     bool pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
+    int shift = xkb_state_mod_name_is_active(
+        GState->Engine->xkb_state,
+        XKB_MOD_NAME_SHIFT,
+        XKB_STATE_MODS_DEPRESSED);
+
+    int ctrl = xkb_state_mod_name_is_active(
+        GState->Engine->xkb_state,
+        XKB_MOD_NAME_CTRL,
+        XKB_STATE_MODS_DEPRESSED);
+
+    int alt = xkb_state_mod_name_is_active(
+        GState->Engine->xkb_state,
+        XKB_MOD_NAME_ALT,
+        XKB_STATE_MODS_DEPRESSED);
+
+    uint8_t flag = 0;
+    if(shift) flag |= SHIFT;
+    if(ctrl) flag |= CTRL;
+    if(alt) flag |= ALT;
+    if(pressed) flag |= PRESSED;
+
     xkb_keysym_t keysym = xkb_state_key_get_one_sym (GState->Engine->xkb_state, key+8);
-    char name[64];
-    xkb_keysym_get_name(keysym, name, 64);
-    // printf ("the key %s was pressed\n", name);
     uint32_t utf32 = xkb_keysym_to_utf32 (keysym);
-    // printf ("the key %d was pressed\n", utf32);
-    if(pressed){
-        if(GState->State->cmd) free(GState->State->cmd);
-        char key[2] = {utf32, '\0'};
-        GState->State->cmd = strdup(key);
-        GState->Engine->dirty = true;
-        switch(utf32){
-            case 'H':
-                if(GState->State->current_path->prev){
-                    GState->State->current_path = GState->State->current_path->prev;
-                    chdir(GState->State->current_path->path);
-                    Load_directory(GState->State);
-                    GState->State->cursor = 0;
-                    GState->State->fov_y = 0;
-                    GState->Engine->dirty = true;
-                }
-                break;
-
-            case 'L':
-                if(GState->State->current_path->next){
-                    GState->State->current_path = GState->State->current_path->next;
-                    chdir(GState->State->current_path->path);
-                    Load_directory(GState->State);
-                    GState->State->cursor = 0;
-                    GState->State->fov_y = 0;
-                    GState->Engine->dirty = true;
-                }
-                break;
-            case 'K':
-                break;
-                
-            case 'h':
-                if( 0 < GState->State->cursor){
-                    GState->State->cursor--;
-                }
-                break;
-
-            case 'j':{
-                // starts from 0 to (files_per_row - 1);
-                int c_col = GState->State->cursor / GState->State->files_per_row;
-                int c_row = GState->State->cursor % GState->State->files_per_row;
-                c_col++;
-                int next_index = c_col * GState->State->files_per_row + c_row;
-                if(next_index < GState->State->n){
-                    GState->State->cursor = next_index;
-                    GState->State->cursor_y_pos = c_col * GState->State->slot_h;
-                    int cursor_y = c_col * GState->State->slot_h;
-                    int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
-                    if(GState->Engine->height - GState->State->cmd_height < cursor_y_rel_to_screen + GState->State->slot_h){
-                        GState->State->fov_y += GState->State->slot_h;
-                    }
-                }
-                break;
-            }
-
-            case 'k':{
-                // starts from 0 to (files_per_row - 1);
-                int c_col = GState->State->cursor / GState->State->files_per_row;
-                int c_row = GState->State->cursor % GState->State->files_per_row;
-                c_col--;
-                int next_index = c_col * GState->State->files_per_row + c_row;
-                if(0 <= next_index){
-                    GState->State->cursor = next_index;
-                    int cursor_y = c_col * GState->State->slot_h;
-                    int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
-                    if(cursor_y_rel_to_screen < 0){
-                        GState->State->fov_y -= GState->State->slot_h;
-                    }
-                }
-                break;
-            }
-            case 'l':
-                if(GState->State->cursor < GState->State->n - 1){
-                    GState->State->cursor++;
-                }
-                break;
-            case ENTER:
-                Item item = GState->State->dir[GState->State->cursor];
-                if(item.type == type_dir){
-                    Open_Directory(GState->State, item.name);
-                }
-                break;
-        }
-    }
+    Perform_Action(GState, utf32, flag);
 }
 void Build_Dir_Stack(App_State *State){
     if(!State->dir_stack){
@@ -262,6 +396,7 @@ void Build_Dir_Stack(App_State *State){
 int main(int argv, char *argc[]) {
     Wl_Engine Engine = { .running = true, .dirty = true };
     App_State State = { 
+        .mode = NORMAL,
         .dir_stack = NULL,
         .current_path = NULL,
         .cmd = NULL,
