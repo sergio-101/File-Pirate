@@ -14,6 +14,9 @@ void print_stack(App_State *State){
             break;
         }
         node = node->next;
+        printf("%s", node->path);
+        if(node == State->current_path) printf("(<)\n");
+        else printf("\n");
     }
 };
 
@@ -25,8 +28,8 @@ void Draw_Frame(Global_State *GState){
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     int X = 0, Y = -GState->State->fov_y;
-    for(int i = 0; i < GState->State->n; ++i){
-        Item _item = GState->State->dir[i];
+    for(int i = 0; i < GState->State->view_n; ++i){
+        Item _item = GState->State->view_dir[i];
         float x = X + GState->State->padding;
         float y = Y + GState->State->padding;
         if(_item.selected || GState->State->cursor == i){
@@ -60,16 +63,14 @@ void Draw_Frame(Global_State *GState){
         GState->State->cmd_height,
         100, 100, 200
     );
-    if(GState->State->cmd){
-        render_text(
-            GState->Engine,
-            GState->State->cmd,
-            0, GState->Engine->height - GState->State->cmd_height,
-            0.4f, 
-            0, 0, 0,
-            GState->Engine->width
-        );
-    }
+    render_text(
+        GState->Engine,
+        GState->State->cmd,
+        0, GState->Engine->height - GState->State->cmd_height,
+        0.4f, 
+        0, 0, 0,
+        GState->Engine->width
+    );
 }
 
 void Frame_callback(void* data, struct wl_callback* wl_cb, uint callback_data){
@@ -77,7 +78,7 @@ void Frame_callback(void* data, struct wl_callback* wl_cb, uint callback_data){
     App_State *State = ((Global_State*) data)->State;
     Wl_Engine *Engine = ((Global_State*) data)->Engine;
     if(Engine->dirty){
-        print_stack(State);
+        // print_stack(State);
         Draw_Frame((Global_State*)data);
         eglSwapBuffers(Engine->egl_display, Engine->egl_surface);
         Engine->dirty = false;
@@ -103,22 +104,32 @@ void Render(Global_State *GState){
 void Load_directory(App_State *State){
     DIR *dir;
     struct dirent *entry;
-    State->n = 0;
+    State->all_n = 0;
+    State->view_n = 0;
     dir = opendir(State->current_path->path);
     while ((entry = readdir(dir)) != NULL) {
-        char *n = entry->d_name;
-        if(!strcmp(".", n) || !strcmp("..", n)) continue;
+        if(State->all_n >= State->allocated) {
+            State->view_dir = realloc(State->view_dir, State->allocated * 2);
+            State->all_dir =  realloc(State->all_dir, State->allocated * 2);
+        };
+        char *file = entry->d_name;
+        if(!strcmp(".", file) || !strcmp("..", file)) continue;
         struct stat st;
-        lstat(n, &st); 
+        lstat(file, &st); 
         Item _item = {
             .type = S_ISDIR(st.st_mode)? type_dir: type_file
         };
-        snprintf(_item.name, 40, "%s", n);
-        State->dir[State->n] = _item;
-        State->n++;
+        snprintf(_item.name, 40, "%s", file);
+
+        State->all_dir[State->all_n] = _item;
+        State->view_dir[State->view_n] = _item;
+
+        State->all_n++;
+        State->view_n++;
     }
     closedir(dir);
 }
+
 void Open_Directory(App_State *State, char *dir){
     Path *c_path = State->current_path;
 
@@ -153,7 +164,7 @@ bool push_cursor_down(Global_State *GState){
     int c_row = GState->State->cursor % GState->State->files_per_row;
     c_col++;
     int next_index = c_col * GState->State->files_per_row + c_row;
-    if(next_index < GState->State->n){
+    if(next_index < GState->State->view_n){
         GState->State->cursor = next_index;
         GState->State->cursor_y_pos = c_col * GState->State->slot_h;
         int cursor_y = c_col * GState->State->slot_h;
@@ -181,9 +192,9 @@ bool push_cursor_up(Global_State *GState){
     }
 }
 void select_from_till(Global_State *GState, int from , int to){
-    for(int i = 0; i < GState->State->n; i++){
+    for(int i = 0; i < GState->State->view_n; i++){
         int included = (from <= i && i <= to); 
-        Item *item = &GState->State->dir[i];
+        Item *item = &GState->State->view_dir[i];
         if(included){
             item->selected = true;
         }
@@ -201,15 +212,117 @@ void Update_Visual_Block(Global_State *GState){
     };
     select_from_till(GState, from, to);
 }
+
+void Clear_Filter(Global_State *GState){
+    GState->State->cmd_n = 0;
+    memset(GState->State->cmd, '\0', GState->State->cmd_allocated);
+    GState->State->view_n = GState->State->all_n;
+    memcpy(GState->State->view_dir, GState->State->all_dir, sizeof(GState->State->all_dir));
+}
+void Update_Filter(Global_State *GState){
+    GState->State->cursor = 0;
+    int *view_n = &GState->State->view_n;
+    int all_n = GState->State->all_n;
+    Item *all_dir = GState->State->all_dir;
+    Item *view_dir = GState->State->view_dir;
+    char *cmd = GState->State->cmd;
+    *view_n = 0;
+    for(int i = 0; i < all_n; i++){
+        Item item = all_dir[i];
+        if(GState->State->allocated <= *view_n)
+            fprintf(stderr, "somehow view files buffer is trying to reach more than it has been allocated, fix it dumbfuck.\n");
+
+        if(strstr(item.name, cmd+1) != NULL){
+            view_dir[*view_n] = item; 
+            *view_n = *view_n + 1;
+        }
+    }    
+}
+
+void Cmd_Pop_Char(Global_State *GState){
+    if(1 < GState->State->cmd_n){
+        GState->State->cmd[GState->State->cmd_n - 1] = '\0';
+        GState->State->cmd_n = GState->State->cmd_n - 1;
+    }
+}
+void Cmd_Put_Char(Global_State *GState, uint32_t c){
+    if(GState->State->cmd_allocated - 1 <= GState->State->cmd_n){
+        GState->State->cmd = realloc(GState->State->cmd, GState->State->cmd_allocated * 2);
+        memset(GState->State->cmd + GState->State->cmd_allocated, '\0', GState->State->cmd_allocated);
+        GState->State->cmd_allocated *= 2;
+    }
+    GState->State->cmd[GState->State->cmd_n] = c;
+    GState->State->cmd_n++;
+}
+
 void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
     bool pressed = extras_flag & PRESSED;
     bool shift = extras_flag & SHIFT;
     bool ctrl = extras_flag & CTRL;
     bool alt = extras_flag & ALT;
-    // if(GState->State->cmd) free(GState->State->cmd);
-    // char str[2] = {key, '\0'};
-    // GState->State->cmd = strdup(str);
-    if(GState->State->mode == NORMAL){
+    if(GState->State->record && pressed) {
+        if(key == BACKSPACE){
+            Cmd_Pop_Char(GState);
+            Update_Filter(GState);
+        }
+        else if(32 <= key && key <= 126){
+            Cmd_Put_Char(GState, key);
+            Update_Filter(GState);
+        }
+    };
+    if(GState->State->mode == FILTER){
+        if(pressed){
+            if(key == ESCAPE){
+                GState->State->record = false;
+                GState->State->mode = NORMAL;
+                Clear_Filter(GState);
+                GState->Engine->dirty = true;
+                return;
+            }
+
+            if(GState->State->record){
+                if(key == ENTER){
+                    GState->State->record = false;
+                    Update_Filter(GState);
+                }
+            }
+            else{
+                switch(key){
+                    case 'h':
+                        if( 0 < GState->State->cursor){
+                            GState->State->cursor--;
+                        }
+                        break;
+
+                    case 'j':
+                        if(push_cursor_down(GState)) GState->Engine->dirty = true;
+                        break;
+                    
+
+                    case 'k':
+                        if(push_cursor_up(GState)) GState->Engine->dirty = true;
+                        break;
+
+                    case 'l':
+                        if(GState->State->cursor < GState->State->view_n - 1){
+                            GState->State->cursor++;
+                        }
+                        break;
+
+                    case ENTER:
+                        Item item = GState->State->view_dir[GState->State->cursor];
+                        if(item.type == type_dir){
+                            Open_Directory(GState->State, item.name);
+                            GState->State->mode = NORMAL;
+                            Clear_Filter(GState);
+                        }
+                        break;
+                }
+            }
+            GState->Engine->dirty = true;
+        }
+    } 
+    else if(GState->State->mode == NORMAL){
         if(pressed){
             switch(key){
                 case 'H':
@@ -241,24 +354,31 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                     }
                     break;
 
-                case 'j':{
+                case 'j':
                     if(push_cursor_down(GState)) GState->Engine->dirty = true;
                     break;
-                }
+                
 
-                case 'k':{
+                case 'k':
                     if(push_cursor_up(GState)) GState->Engine->dirty = true;
                     break;
-                }
+
                 case 'l':
-                    if(GState->State->cursor < GState->State->n - 1){
+                    if(GState->State->cursor < GState->State->view_n - 1){
                         GState->State->cursor++;
                         GState->Engine->dirty = true;
                     }
                     break;
 
+                case '/':
+                    GState->State->mode = FILTER;
+                    GState->State->record = true;
+                    Cmd_Put_Char(GState, '>');
+                    GState->Engine->dirty = true;
+                    break;
+
                 case ENTER:
-                    Item item = GState->State->dir[GState->State->cursor];
+                    Item item = GState->State->view_dir[GState->State->cursor];
                     if(item.type == type_dir){
                         Open_Directory(GState->State, item.name);
                         GState->Engine->dirty = true;
@@ -266,12 +386,13 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                     break;
             }
         }
+
         else{
             switch(key){
                 case 'v':
                 case 'V':
                     GState->State->visual_start = GState->State->cursor;
-                    GState->State->dir[GState->State->cursor].selected = true;
+                    GState->State->view_dir[GState->State->cursor].selected = true;
                     GState->State->mode = VISUAL;
                     GState->Engine->dirty = true;
                     break;
@@ -303,7 +424,7 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                     break;
                 }
                 case 'l':
-                    if(GState->State->cursor < GState->State->n - 1){
+                    if(GState->State->cursor < GState->State->view_n - 1){
                         GState->State->cursor++;
                         Update_Visual_Block(GState);                        
                         GState->Engine->dirty = true;
@@ -320,6 +441,9 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
         }        
     }
 }
+void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys){};
+void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface){};
+void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay){};
 void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, int32_t fd, uint32_t size){
     Wl_Engine *Engine = ((Global_State*)data)->Engine;
 	char *keymap_string = mmap (NULL, size, PROT_READ, MAP_SHARED, fd, 0);
@@ -330,14 +454,19 @@ void keyboard_keymap(void *data, struct wl_keyboard *keyboard,uint32_t format, i
 	xkb_state_unref (Engine->xkb_state);
 	Engine->xkb_state = xkb_state_new (Engine->keymap);
 }
-void keyboard_enter(void *data, struct wl_keyboard *keyboard,uint32_t serial, struct wl_surface *surface, struct wl_array *keys){
-}
-void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface){}
-void keyboard_modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked, uint32_t group){
+void keyboard_modifiers(
+    void *data,
+    struct wl_keyboard *keyboard,
+    uint32_t serial,
+    uint32_t mods_depressed,
+    uint32_t mods_latched,
+    uint32_t mods_locked,
+    uint32_t group
+)
+{
 	Global_State *GState = (Global_State*) data;
     xkb_state_update_mask(GState->Engine->xkb_state, mods_depressed, mods_latched, mods_locked, 0, 0, group);
-}
-void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,int32_t rate, int32_t delay){}
+};
 void key_listener(void* data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state){
 	Global_State *GState = (Global_State*) data;
     bool pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
@@ -397,17 +526,39 @@ int main(int argv, char *argc[]) {
     Wl_Engine Engine = { .running = true, .dirty = true };
     App_State State = { 
         .mode = NORMAL,
+        .record = false,
         .dir_stack = NULL,
         .current_path = NULL,
+
         .cmd = NULL,
+        .cmd_allocated = 1024,
+        .cmd_n = 0,
         .cmd_height = 50,
+
         .cursor = 0,
         .cursor_y_pos = 0,
-        .n = 0,
+        .view_n = 0,
+        .all_n = 0,
+        .allocated = 1024,
         .slot_w = 150,
         .slot_h = 80, 
         .padding = 10
     };
+    if ((State.cmd = malloc(State.cmd_allocated)) == NULL) {
+        fprintf(stderr, "malloc cmd");
+        exit(1);
+    }
+    memset(State.cmd, '\0', State.cmd_allocated);
+
+    if ((State.all_dir = malloc(State.allocated * sizeof(Item))) == NULL) {
+        fprintf(stderr, "malloc all dir");
+        exit(1);
+    }
+    if ((State.view_dir = malloc(State.allocated * sizeof(Item))) == NULL) {
+        fprintf(stderr, "malloc view dir");
+        exit(1);
+    }
+
     Init_Engine(&Engine);
     Global_State GState = {&Engine, &State};
     State.files_per_row = Engine.width / State.slot_w;
@@ -422,14 +573,8 @@ int main(int argv, char *argc[]) {
     };
     wl_keyboard_add_listener(keyboard, &keyboard_callbacks, (void*) &GState);
 
-    if ((State.dir = malloc(1024 * sizeof(Item))) == NULL) {
-        fprintf(stderr, "malloc");
-        exit(1);
-    }
-    State.allocated = 1024;
     Build_Dir_Stack(&State);
     Load_directory(&State);
-
     Render(&GState);
 
     while (Engine.running) {
