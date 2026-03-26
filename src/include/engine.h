@@ -37,8 +37,8 @@ typedef struct {
 typedef struct Wl_Engine{
     bool running;
     bool dirty;
-    unsigned int width;
-    unsigned int height;
+    int width;
+    int height;
     struct wl_display *display;
     struct wl_seat *seat;
     struct wl_compositor *compositor;

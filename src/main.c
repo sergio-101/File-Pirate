@@ -28,33 +28,59 @@ void Draw_Frame(Global_State *GState){
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     int X = 0, Y = -GState->State->fov_y;
-    for(int i = 0; i < GState->State->view_n; ++i){
-        Item _item = GState->State->view_dir[i];
-        float x = X + GState->State->padding;
-        float y = Y + GState->State->padding;
-        if(_item.selected || GState->State->cursor == i){
-            render_rect(
-                GState->Engine, x, y, 
-                GState->State->slot_w, 
-                GState->State->slot_h, 
-                200, 100, 200
-            );
-        }
+
+    // Files
+    if(GState->State->view_n == 0){
         render_text(
             GState->Engine,
-            _item.name,
-            x + GState->State->padding,
-            y + GState->State->padding,
-            0.4f, 255, 255, 255,
-            GState->State->slot_w - GState->State->padding * 2
+            "<!-- Nothing Much Here To Show -->",
+            GState->State->padding * 2,
+            GState->State->padding * 2,
+            0.5f,
+            255, 00, 00,
+            GState->Engine->width
         );
-
-        X += GState->State->slot_w;
-        if(X + GState->State->slot_w > GState->Engine->width){
-            X = 0;
-            Y += GState->State->slot_h;
-        }
     }
+    else {
+        for(int i = 0; i < GState->State->view_n; ++i){
+            Item _item = GState->State->view_dir[i];
+            float x = X + GState->State->padding;
+            float y = Y + GState->State->padding;
+            if(_item.selected || GState->State->cursor == i){
+                render_rect(
+                    GState->Engine, x, y, 
+                    GState->State->slot_w, 
+                    GState->State->slot_h, 
+                    200, 100, 200
+                );
+            }
+            float color[3] = {
+                255, 255, 255
+            };
+            if(_item.type == type_dir) {
+                color[0] = 255;
+                color[1] = 0;
+                color[2] = 0;
+            }
+            render_text(
+                GState->Engine,
+                _item.name,
+                x + GState->State->padding,
+                y + GState->State->padding,
+                0.4f,
+                color[0],color[1],color[2],
+                GState->State->slot_w - GState->State->padding * 2
+            );
+
+            X += GState->State->slot_w;
+            if(X + GState->State->slot_w > GState->Engine->width){
+                X = 0;
+                Y += GState->State->slot_h;
+            }
+        }
+
+    }
+    // COMMAND LINE
     render_rect(
         GState->Engine,
         0,
@@ -63,9 +89,21 @@ void Draw_Frame(Global_State *GState){
         GState->State->cmd_height,
         100, 100, 200
     );
+    char *modes[3] = {
+        "[NORMAL]", "[VISUAL]", "[FILTER]"
+    };
+    char* crnt_mode = modes[GState->State->mode];
+    int mode_len = strlen(crnt_mode);
+    char cmd_output[GState->State->cmd_allocated + mode_len + 16];
+                                                            /* ^ Just to be safe; */
+    strncpy(cmd_output, crnt_mode, mode_len + 1);
+
+    if(GState->State->mode == FILTER && GState->State->record)
+        snprintf(cmd_output + mode_len, 1 + strlen(GState->State->cmd) + 1, "@%s", GState->State->cmd);
+                                                                     /*  ^ for null byte   */
     render_text(
         GState->Engine,
-        GState->State->cmd,
+        cmd_output,
         0, GState->Engine->height - GState->State->cmd_height,
         0.4f, 
         0, 0, 0,
@@ -99,7 +137,6 @@ void Render(Global_State *GState){
     wl_surface_commit(GState->Engine->surface);
 }
 
-
 // Load content of current_path
 void Load_directory(App_State *State){
     DIR *dir;
@@ -120,6 +157,7 @@ void Load_directory(App_State *State){
             .type = S_ISDIR(st.st_mode)? type_dir: type_file
         };
         snprintf(_item.name, 40, "%s", file);
+        // if(_item.type == type_dir)
 
         State->all_dir[State->all_n] = _item;
         State->view_dir[State->view_n] = _item;
@@ -166,7 +204,6 @@ bool push_cursor_down(Global_State *GState){
     int next_index = c_col * GState->State->files_per_row + c_row;
     if(next_index < GState->State->view_n){
         GState->State->cursor = next_index;
-        GState->State->cursor_y_pos = c_col * GState->State->slot_h;
         int cursor_y = c_col * GState->State->slot_h;
         int cursor_y_rel_to_screen = cursor_y - GState->State->fov_y;
         if(GState->Engine->height - GState->State->cmd_height < cursor_y_rel_to_screen + GState->State->slot_h){
@@ -217,10 +254,11 @@ void Clear_Filter(Global_State *GState){
     GState->State->cmd_n = 0;
     memset(GState->State->cmd, '\0', GState->State->cmd_allocated);
     GState->State->view_n = GState->State->all_n;
-    memcpy(GState->State->view_dir, GState->State->all_dir, sizeof(GState->State->all_dir));
+    memcpy(GState->State->view_dir, GState->State->all_dir, sizeof(GState->State->all_dir) * GState->State->all_n);
 }
 void Update_Filter(Global_State *GState){
     GState->State->cursor = 0;
+    GState->State->fov_y = 0;
     int *view_n = &GState->State->view_n;
     int all_n = GState->State->all_n;
     Item *all_dir = GState->State->all_dir;
@@ -232,7 +270,7 @@ void Update_Filter(Global_State *GState){
         if(GState->State->allocated <= *view_n)
             fprintf(stderr, "somehow view files buffer is trying to reach more than it has been allocated, fix it dumbfuck.\n");
 
-        if(strstr(item.name, cmd+1) != NULL){
+        if(strstr(item.name, cmd) != NULL){
             view_dir[*view_n] = item; 
             *view_n = *view_n + 1;
         }
@@ -240,7 +278,7 @@ void Update_Filter(Global_State *GState){
 }
 
 void Cmd_Pop_Char(Global_State *GState){
-    if(1 < GState->State->cmd_n){
+    if(0 < GState->State->cmd_n){
         GState->State->cmd[GState->State->cmd_n - 1] = '\0';
         GState->State->cmd_n = GState->State->cmd_n - 1;
     }
@@ -274,8 +312,8 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
         if(pressed){
             if(key == ESCAPE){
                 GState->State->record = false;
-                GState->State->mode = NORMAL;
                 Clear_Filter(GState);
+                GState->State->mode = NORMAL;
                 GState->Engine->dirty = true;
                 return;
             }
@@ -373,7 +411,6 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                 case '/':
                     GState->State->mode = FILTER;
                     GState->State->record = true;
-                    Cmd_Put_Char(GState, '>');
                     GState->Engine->dirty = true;
                     break;
 
@@ -524,6 +561,7 @@ void Build_Dir_Stack(App_State *State){
 }
 int main(int argv, char *argc[]) {
     Wl_Engine Engine = { .running = true, .dirty = true };
+    Init_Engine(&Engine);
     App_State State = { 
         .mode = NORMAL,
         .record = false,
@@ -536,7 +574,6 @@ int main(int argv, char *argc[]) {
         .cmd_height = 50,
 
         .cursor = 0,
-        .cursor_y_pos = 0,
         .view_n = 0,
         .all_n = 0,
         .allocated = 1024,
@@ -559,7 +596,6 @@ int main(int argv, char *argc[]) {
         exit(1);
     }
 
-    Init_Engine(&Engine);
     Global_State GState = {&Engine, &State};
     State.files_per_row = Engine.width / State.slot_w;
     Engine.xkb_context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);

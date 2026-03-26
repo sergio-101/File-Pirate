@@ -295,7 +295,6 @@ void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel, int32_t w
 
 void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
     xdg_surface_ack_configure(xdg_surface, serial);
-    // printf("surface configured\n");
 }
 
 void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel){
@@ -438,6 +437,7 @@ int Init_Engine(Wl_Engine *Engine) {
     // WL_SURFACE -|> EGL_WINDOW (+EGL_CONFIG +EGL_DISPLAY) -|> EGL_SURFACE;
     Engine->egl_window  = wl_egl_window_create(Engine->surface, Engine->width, Engine->height);
     Engine->egl_surface = eglCreateWindowSurface(Engine->egl_display, config, (EGLNativeWindowType)Engine->egl_window, NULL);
+
 
     // Set current Display, Draw/Read Surfaces, Context (Doing it before the loop because only single window is enough for this project);
     // Activating this context which will be used be subsequent calls from opengl;

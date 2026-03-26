@@ -45,11 +45,10 @@ typedef struct App_State {
     Path *current_path;
     int files_per_row;
     int cursor;
-    int cursor_y_pos;
     int visual_start;
 
     char *cmd;
-    uint32_t cmd_height; 
+    int cmd_height; 
     int cmd_allocated;
     int cmd_n;
 
