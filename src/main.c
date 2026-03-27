@@ -34,8 +34,8 @@ void Draw_Frame(Global_State *GState){
         render_text(
             GState->Engine,
             "<!-- Nothing Much Here To Show -->",
-            GState->State->padding * 2,
-            GState->State->padding * 2,
+            GState->State->padding_x * 2,
+            GState->State->padding_y * 2,
             0.5f,
             255, 00, 00,
             GState->Engine->width
@@ -44,11 +44,11 @@ void Draw_Frame(Global_State *GState){
     else {
         for(int i = 0; i < GState->State->view_n; ++i){
             Item _item = GState->State->view_dir[i];
-            float x = X + GState->State->padding;
-            float y = Y + GState->State->padding;
+            float x = X + GState->State->padding_x;
+            float y = Y + GState->State->padding_y;
             if(_item.selected || GState->State->cursor == i){
                 render_rect(
-                    GState->Engine, x, y, 
+                    GState->Engine, X, Y, 
                     GState->State->slot_w, 
                     GState->State->slot_h, 
                     200, 100, 200
@@ -65,13 +65,28 @@ void Draw_Frame(Global_State *GState){
             render_text(
                 GState->Engine,
                 _item.name,
-                x + GState->State->padding,
-                y + GState->State->padding,
+                x, y,
                 0.4f,
                 color[0],color[1],color[2],
-                GState->State->slot_w - GState->State->padding * 2
+                GState->State->slot_w - GState->State->padding_x * 2
             );
-
+            if(GState->State->quick_navigate){
+                render_rect(
+                    GState->Engine, X, Y, 
+                    GState->State->slot_w, 
+                    GState->State->padding_y, 
+                    255, 255, 00
+                );
+                char nickname[3] = {_item.nickname[0], _item.nickname[1], '\0'};
+                render_text(
+                    GState->Engine,
+                    nickname,
+                    x, Y,
+                    0.4f,
+                    00, 00, 00,
+                    GState->State->slot_w - GState->State->padding_y 
+                );
+            }
             X += GState->State->slot_w;
             if(X + GState->State->slot_w > GState->Engine->width){
                 X = 0;
@@ -153,15 +168,13 @@ void Load_directory(App_State *State){
         if(!strcmp(".", file) || !strcmp("..", file)) continue;
         struct stat st;
         lstat(file, &st); 
+
         Item _item = {
             .type = S_ISDIR(st.st_mode)? type_dir: type_file
         };
         snprintf(_item.name, 40, "%s", file);
-        // if(_item.type == type_dir)
-
         State->all_dir[State->all_n] = _item;
         State->view_dir[State->view_n] = _item;
-
         State->all_n++;
         State->view_n++;
     }
@@ -169,8 +182,8 @@ void Load_directory(App_State *State){
 }
 
 void Open_Directory(App_State *State, char *dir){
+    State->mode = NORMAL;
     Path *c_path = State->current_path;
-
     // Clearing if any nodes are ahead of current_path node; Makes the traversal linear;
     Path *temp = c_path->next;
     while(temp != NULL){
@@ -251,11 +264,11 @@ void Update_Visual_Block(Global_State *GState){
 }
 
 void Clear_Filter(Global_State *GState){
-    GState->State->cmd_n = 0;
     memset(GState->State->cmd, '\0', GState->State->cmd_allocated);
     GState->State->view_n = GState->State->all_n;
     memcpy(GState->State->view_dir, GState->State->all_dir, sizeof(GState->State->all_dir) * GState->State->all_n);
 }
+
 void Update_Filter(Global_State *GState){
     GState->State->cursor = 0;
     GState->State->fov_y = 0;
@@ -278,21 +291,62 @@ void Update_Filter(Global_State *GState){
 }
 
 void Cmd_Pop_Char(Global_State *GState){
-    if(0 < GState->State->cmd_n){
-        GState->State->cmd[GState->State->cmd_n - 1] = '\0';
-        GState->State->cmd_n = GState->State->cmd_n - 1;
+    int cmd_n = strlen(GState->State->cmd);
+    if(0 < cmd_n){
+        GState->State->cmd[cmd_n - 1] = '\0';
     }
 }
 void Cmd_Put_Char(Global_State *GState, uint32_t c){
-    if(GState->State->cmd_allocated - 1 <= GState->State->cmd_n){
+    int cmd_n = strlen(GState->State->cmd);
+    if(GState->State->cmd_allocated - 1 <= cmd_n){
         GState->State->cmd = realloc(GState->State->cmd, GState->State->cmd_allocated * 2);
         memset(GState->State->cmd + GState->State->cmd_allocated, '\0', GState->State->cmd_allocated);
         GState->State->cmd_allocated *= 2;
     }
-    GState->State->cmd[GState->State->cmd_n] = c;
-    GState->State->cmd_n++;
+    GState->State->cmd[cmd_n] = c;
 }
 
+void Set_Nicknames(Global_State *GState){
+    int row_behind = GState->State->fov_y / GState->State->slot_h;
+    int item_n = row_behind * GState->State->files_per_row;
+    int nick_i = 'a';
+    int nick_ii = 'a';
+    for(int i = 0; i < GState->State->view_n; i++){
+        Item *item = &GState->State->view_dir[i];
+        if(item_n <= i && i < item_n + GState->State->file_capacity_on_screen){
+            item->nickname[0] = nick_i;
+            item->nickname[1] = nick_ii;
+            if('z' <= nick_ii){ nick_i++; nick_ii = 'a';}
+            else {
+                nick_ii++;
+            }
+            if('z' <= nick_i){
+                fprintf(stderr, "items number exceeded the limit of 26*26 on the screen; or maybe the code has a bug, chances are low although.\n");
+                exit(1);
+            }
+        }
+        else {
+            item->nickname[0] = '\0';
+            item->nickname[1] = '\0';
+        }
+   }
+}
+
+void Check_Quick_Navigation(Global_State *GState){
+    char *cmd = GState->State->cmd;
+    int row_behind = GState->State->fov_y / GState->State->slot_h;
+    int item_n = row_behind * GState->State->files_per_row;
+    for(int i = item_n; i < item_n + GState->State->file_capacity_on_screen && i < GState->State->view_n; i++){
+        Item item = GState->State->view_dir[i];
+        if(!strncmp(cmd, item.nickname, 2)) {
+            if(item.type == type_dir){
+                Open_Directory(GState->State, item.name);
+                GState->Engine->dirty = true;
+            }
+            return;
+        }
+    }
+}
 void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
     bool pressed = extras_flag & PRESSED;
     bool shift = extras_flag & SHIFT;
@@ -301,14 +355,32 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
     if(GState->State->record && pressed) {
         if(key == BACKSPACE){
             Cmd_Pop_Char(GState);
-            Update_Filter(GState);
         }
         else if(32 <= key && key <= 126){
             Cmd_Put_Char(GState, key);
-            Update_Filter(GState);
         }
     };
-    if(GState->State->mode == FILTER){
+    // QUICK NAVIGATION ENABLED
+    if(GState->State->quick_navigate){
+        if(pressed){
+            if(key == ESCAPE || !(key >= 'a' && key <= 'z')){
+                memset(GState->State->cmd, '\0', GState->State->cmd_allocated);
+                GState->State->quick_navigate = false;
+                GState->State->record = false;        
+            }
+            else if(key >= 'a' && key <= 'z'){
+                Check_Quick_Navigation(GState);
+                if(strlen(GState->State->cmd) >= 2){
+                    memset(GState->State->cmd, '\0', GState->State->cmd_allocated);
+                    GState->State->quick_navigate = false;
+                    GState->State->record = false;        
+                }
+            }
+            GState->Engine->dirty = true;
+        }
+    } 
+
+    else if(GState->State->mode == FILTER){
         if(pressed){
             if(key == ESCAPE){
                 GState->State->record = false;
@@ -317,11 +389,11 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                 GState->Engine->dirty = true;
                 return;
             }
-
             if(GState->State->record){
+                Update_Filter(GState);
                 if(key == ENTER){
+                    memset(GState->State->cmd, '\0', GState->State->cmd_allocated);
                     GState->State->record = false;
-                    Update_Filter(GState);
                 }
             }
             else{
@@ -347,11 +419,16 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                         }
                         break;
 
+                    case 'f':
+                        Set_Nicknames(GState);
+                        GState->State->quick_navigate = true;
+                        GState->State->record = true;
+                        break;
+
                     case ENTER:
                         Item item = GState->State->view_dir[GState->State->cursor];
                         if(item.type == type_dir){
                             Open_Directory(GState->State, item.name);
-                            GState->State->mode = NORMAL;
                             Clear_Filter(GState);
                         }
                         break;
@@ -408,6 +485,21 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                     }
                     break;
 
+                case 'f':
+                    Set_Nicknames(GState);
+                    GState->State->quick_navigate = true;
+                    GState->State->record = true;
+                    GState->Engine->dirty = true;
+                    break;
+
+                case 'v':
+                case 'V':
+                    GState->State->visual_start = GState->State->cursor;
+                    GState->State->view_dir[GState->State->cursor].selected = true;
+                    GState->State->mode = VISUAL;
+                    GState->Engine->dirty = true;
+                    break;
+
                 case '/':
                     GState->State->mode = FILTER;
                     GState->State->record = true;
@@ -420,18 +512,6 @@ void Perform_Action(Global_State *GState, uint32_t key, int extras_flag){
                         Open_Directory(GState->State, item.name);
                         GState->Engine->dirty = true;
                     }
-                    break;
-            }
-        }
-
-        else{
-            switch(key){
-                case 'v':
-                case 'V':
-                    GState->State->visual_start = GState->State->cursor;
-                    GState->State->view_dir[GState->State->cursor].selected = true;
-                    GState->State->mode = VISUAL;
-                    GState->Engine->dirty = true;
                     break;
             }
         }
@@ -564,23 +644,30 @@ int main(int argv, char *argc[]) {
     Init_Engine(&Engine);
     App_State State = { 
         .mode = NORMAL,
+        .quick_navigate = false,
         .record = false,
         .dir_stack = NULL,
         .current_path = NULL,
 
         .cmd = NULL,
         .cmd_allocated = 1024,
-        .cmd_n = 0,
         .cmd_height = 50,
 
+        .row_behind = 0,
         .cursor = 0,
         .view_n = 0,
         .all_n = 0,
         .allocated = 1024,
         .slot_w = 150,
-        .slot_h = 80, 
-        .padding = 10
+        .slot_h = 100, 
+        .padding_x = 10,
+        .padding_y = 20
     };
+    State.files_per_row = Engine.width / State.slot_w;
+    State.rows_capacity_on_screen = Engine.height / State.slot_h;
+    State.cols_capacity_on_screen = Engine.width / State.slot_w;
+    State.file_capacity_on_screen = State.rows_capacity_on_screen * State.files_per_row;
+
     if ((State.cmd = malloc(State.cmd_allocated)) == NULL) {
         fprintf(stderr, "malloc cmd");
         exit(1);
@@ -597,7 +684,6 @@ int main(int argv, char *argc[]) {
     }
 
     Global_State GState = {&Engine, &State};
-    State.files_per_row = Engine.width / State.slot_w;
     Engine.xkb_context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);
     struct wl_keyboard *keyboard = wl_seat_get_keyboard(Engine.seat);
     static const struct wl_keyboard_listener keyboard_callbacks = {

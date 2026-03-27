@@ -19,13 +19,14 @@ typedef enum item_type {
 typedef enum Mode {
     NORMAL = 0,
     VISUAL,
-    FILTER
+    FILTER,
 } Mode;
 
 typedef struct Item {
    item_type type; 
    bool selected;
    char name[128];
+   char nickname[2];
 } Item;
 
 typedef struct Path {
@@ -40,6 +41,7 @@ typedef struct Vector2 {
 
 typedef struct App_State {
     Mode mode;
+    bool quick_navigate;
     bool record;
     Path *dir_stack;
     Path *current_path;
@@ -51,7 +53,7 @@ typedef struct App_State {
     int cmd_height; 
     int cmd_allocated;
     int cmd_n;
-
+    
 
     uint32_t allocated;
     // ^ for both buffers, shrinks and grows together for now;
@@ -60,11 +62,15 @@ typedef struct App_State {
     int all_n;  
     Item *all_dir;
 
+    int row_behind;
+    int file_capacity_on_screen;
+    int rows_capacity_on_screen;
+    int cols_capacity_on_screen;
     uint32_t fov_y;
-    uint32_t total_rows;  
     uint32_t slot_w; 
     uint32_t slot_h; 
-    uint32_t padding;
+    uint32_t padding_x;
+    uint32_t padding_y;
 } App_State;
 
 typedef struct Global_State {
